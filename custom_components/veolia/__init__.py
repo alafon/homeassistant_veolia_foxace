@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+
 import aiohttp
 from veolia_api import VeoliaAPI
 from veolia_api.exceptions import VeoliaAPIError
@@ -9,7 +11,7 @@ from veolia_api.portals import VEOLIA_PORTAL_CLIENTS
 
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME, Platform
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.exceptions import ConfigEntryError
+from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryError
 from homeassistant.helpers import (
     device_registry as dr,
     entity_registry as er,
@@ -18,7 +20,13 @@ from homeassistant.helpers import (
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 import homeassistant.helpers.config_validation as cv
 
-from .const import CONF_PORTAL_URL, DOMAIN, LOGGER
+from .const import (
+    CONF_PORTAL_URL,
+    DOMAIN,
+    INITIAL_REFRESH_BACKOFF,
+    INITIAL_REFRESH_RETRIES,
+    LOGGER,
+)
 from .coordinator import VeoliaDataUpdateCoordinator
 from .data import VeoliaConfigEntry
 
@@ -54,12 +62,68 @@ async def async_setup_entry(hass: HomeAssistant, entry: VeoliaConfigEntry) -> bo
     ir.async_delete_issue(hass, DOMAIN, issue_id)
 
     coordinator = VeoliaDataUpdateCoordinator(hass, entry)
-    await coordinator.async_config_entry_first_refresh()
-
     entry.runtime_data = coordinator
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+
+    # Fetch the initial data in the background: awaiting it here would block
+    # boot on the Veolia network round-trip (login + fetch), while the
+    # entities are fully functional as soon as the data lands. Errors are
+    # handled by the task below (reauth / bounded retries).
+    entry.async_create_background_task(
+        hass,
+        _async_initial_refresh(coordinator),
+        "veolia initial refresh",
+    )
     return True
+
+
+async def _async_initial_refresh(coordinator: VeoliaDataUpdateCoordinator) -> None:
+    """Run the first data refresh without blocking entry setup.
+
+    Entities are registered immediately and stay unavailable until the
+    first data arrives. Invalid credentials start the reauth flow (the
+    coordinator handles that internally during ``async_refresh``); a
+    transient failure is retried with a short backoff so a momentary
+    outage at boot does not leave the integration without data until the
+    next scheduled scan interval.
+    """
+    for attempt in range(INITIAL_REFRESH_RETRIES + 1):
+        await coordinator.async_refresh()
+        if coordinator.last_update_success:
+            _async_update_device_serial(coordinator)
+            return
+        if isinstance(coordinator.last_exception, ConfigEntryAuthFailed):
+            # The reauth flow was already started by the coordinator.
+            return
+        if attempt == INITIAL_REFRESH_RETRIES:
+            LOGGER.error(
+                "Initial Veolia data refresh failed after %d attempts; "
+                "retrying at the next scan interval",
+                INITIAL_REFRESH_RETRIES + 1,
+            )
+            return
+        await asyncio.sleep(INITIAL_REFRESH_BACKOFF)
+
+
+def _async_update_device_serial(coordinator: VeoliaDataUpdateCoordinator) -> None:
+    """Fill the device registry with the meter serial number once known.
+
+    The device is created from the entity ``DeviceInfo`` during setup, before
+    the initial refresh has completed, so the serial number is unknown then
+    and the registry entry is created without it. It becomes available in
+    ``coordinator.data`` once the first refresh succeeds; the registry entry
+    is updated at that point (a no-op when already set).
+    """
+    data = coordinator.data
+    if data is None or data.numero_compteur is None:
+        return
+    account_id = str(coordinator.config_entry.unique_id)
+    device_registry = dr.async_get(coordinator.hass)
+    if device := device_registry.async_get_device(identifiers={(DOMAIN, account_id)}):
+        device_registry.async_update_device(
+            device.id, serial_number=data.numero_compteur
+        )
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: VeoliaConfigEntry) -> bool:
