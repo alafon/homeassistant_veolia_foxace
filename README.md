@@ -140,6 +140,36 @@ Dans le résultat JSON, cherchez votre commune et examinez le champ `type_commun
 
 Votre portail n'est pas géré? Voir [CONTRIBUTING.md](CONTRIBUTING.md#adding-a-portal)
 
+## Portails réclamant un code SMS
+
+Sur certains portails — Eau de Toulouse Métropole notamment — la connexion par
+mot de passe depuis Home Assistant échoue avec « Impossible de se connecter ».
+Cognito y répond `SMS_MFA` au lieu des jetons dès qu'il ne reconnaît pas le
+contexte de l'appelant, et sur les comptes migrés l'attribut `phone_number` du
+pool est un bouchon non vérifié (`+33600000000`) : le code n'arrive jamais.
+
+Le compte n'a pourtant aucune MFA configurée — `PreferredMfaSetting` et
+`UserMFASettingList` sont vides. L'exigence vient de l'authentification
+adaptative, qui juge le contexte au risque.
+
+`REFRESH_TOKEN_AUTH` échappe à cette évaluation : ce n'est pas un flux de
+connexion, Cognito ne le soumet à aucun challenge. Un jeton obtenu une fois
+depuis un poste habituel vaut donc authentification depuis n'importe quelle
+adresse — et survit aux changements d'IP.
+
+**Procédure :**
+
+1. Sur votre poste habituel, lancez `scripts/get-refresh-token.sh` et copiez le
+   jeton affiché.
+2. Dans Home Assistant, ajoutez l'intégration, saisissez le code postal et la
+   commune, puis choisissez **Jeton de rafraîchissement** plutôt qu'identifiant
+   et mot de passe.
+3. Collez le jeton.
+
+Le jeton expire (30 jours par défaut chez Cognito, selon la configuration du
+client). Home Assistant demandera alors une reconfiguration : régénérez un
+jeton et collez le nouveau.
+
 ## Installation
 
 ### Via [HACS](https://hacs.xyz/) (recommandé)

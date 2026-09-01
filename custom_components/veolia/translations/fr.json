@@ -23,6 +23,28 @@
           "username": "Nom d'utilisateur",
           "password": "Mot de passe"
         }
+      },
+      "auth_method": {
+        "title": "Méthode de connexion",
+        "description": "Choisissez comment l'intégration s'authentifiera auprès du portail Veolia.",
+        "menu_options": {
+          "credentials": "Identifiant et mot de passe",
+          "refresh_token": "Jeton de rafraîchissement (portails réclamant un code SMS)"
+        }
+      },
+      "refresh_token": {
+        "title": "Jeton de rafraîchissement",
+        "description": "Certains portails placent la connexion par mot de passe derrière une vérification par SMS impossible à satisfaire, le numéro enregistré étant un bouchon non vérifié. Un jeton de rafraîchissement obtenu depuis un poste habituel contourne cette vérification. La procédure pour l'obtenir figure dans le README du dépôt.",
+        "data": {
+          "refresh_token": "Jeton de rafraîchissement"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Jeton expiré",
+        "description": "Le jeton de rafraîchissement n'est plus valide. Générez-en un nouveau et collez-le ci-dessous pour rétablir la connexion.",
+        "data": {
+          "refresh_token": "Nouveau jeton de rafraîchissement"
+        }
       }
     },
     "error": {
@@ -31,10 +53,12 @@
       "commune_not_supported": "Désolé votre compte Veolia n'est pas supportée par cette intégration. Vous devez attendre la migration vers le nouveau site (cette étape dépend uniquement de Veolia) Une fois la migration effectuée, veuillez réessayer.",
       "no_communes_found": "Aucune commune trouvée pour ce code postal",
       "commune_not_veolia": "Veolia ne fournit pas d'eau dans cette commune",
-      "no_account": "Aucun compte Veolia trouvé pour ce code postal"
+      "no_account": "Aucun compte Veolia trouvé pour ce code postal",
+      "invalid_refresh_token": "Jeton de rafraîchissement invalide ou expiré"
     },
     "abort": {
-      "already_configured": "Ce compte est déjà configuré"
+      "already_configured": "Ce compte est déjà configuré",
+      "reauth_successful": "Reconfiguration effectuée"
     }
   },
   "entity": {

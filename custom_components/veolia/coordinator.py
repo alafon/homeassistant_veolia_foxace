@@ -15,7 +15,8 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import dt as dt_util
 
-from .const import CONF_PORTAL_URL, DOMAIN, LOGGER
+from .api import VeoliaRefreshTokenAPI
+from .const import CONF_PORTAL_URL, CONF_REFRESH_TOKEN, DOMAIN, LOGGER
 from .model import VeoliaModel
 
 SCAN_INTERVAL = timedelta(hours=6)
@@ -39,13 +40,26 @@ class VeoliaDataUpdateCoordinator(DataUpdateCoordinator):
         self.session = async_get_clientsession(hass)
 
     async def _async_setup(self) -> None:
-        """Coordinator setup."""
-        self.client_api = VeoliaAPI(
-            username=self.config_entry.data[CONF_USERNAME],
-            password=self.config_entry.data[CONF_PASSWORD],
-            session=self.session,
-            portal_url=self.config_entry.data.get(CONF_PORTAL_URL),
-        )
+        """Coordinator setup.
+
+        Entries created through the refresh-token step hold no credentials:
+        their portal challenges password sign-ins with an SMS code that cannot
+        be delivered. See api.VeoliaRefreshTokenAPI.
+        """
+        portal_url = self.config_entry.data.get(CONF_PORTAL_URL)
+        if refresh_token := self.config_entry.data.get(CONF_REFRESH_TOKEN):
+            self.client_api = VeoliaRefreshTokenAPI(
+                refresh_token=refresh_token,
+                session=self.session,
+                portal_url=portal_url,
+            )
+        else:
+            self.client_api = VeoliaAPI(
+                username=self.config_entry.data[CONF_USERNAME],
+                password=self.config_entry.data[CONF_PASSWORD],
+                session=self.session,
+                portal_url=portal_url,
+            )
 
     async def _async_update_data(self) -> VeoliaModel:
         """Fetch and calculate data."""

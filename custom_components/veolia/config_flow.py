@@ -4,7 +4,10 @@ from urllib.parse import urlparse
 
 import aiohttp
 from veolia_api import VeoliaAPI
-from veolia_api.exceptions import VeoliaAPIInvalidCredentialsError
+from veolia_api.exceptions import (
+    VeoliaAPIInvalidCredentialsError,
+    VeoliaAPITokenError,
+)
 from veolia_api.portals import VEOLIA_PORTAL_CLIENTS
 import voluptuous as vol
 
@@ -12,7 +15,14 @@ from homeassistant import config_entries
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from .const import COMMUNE_LOOKUP_URL, CONF_PORTAL_URL, DOMAIN, LOGGER
+from .api import VeoliaRefreshTokenAPI
+from .const import (
+    COMMUNE_LOOKUP_URL,
+    CONF_PORTAL_URL,
+    CONF_REFRESH_TOKEN,
+    DOMAIN,
+    LOGGER,
+)
 
 
 class VeoliaFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
@@ -58,14 +68,14 @@ class VeoliaFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 and selected_commune.get("type_commune") == "NON_REDIRIGE"
             ):
                 self._portal_url = None
-                return await self.async_step_credentials()
+                return await self.async_step_auth_method()
 
             if selected_commune and selected_commune.get("type_commune") == "REDIRIGE":
                 url_redirection = selected_commune.get("url_redirection", "")
                 hostname = urlparse(url_redirection).hostname or ""
                 if hostname in VEOLIA_PORTAL_CLIENTS:
                     self._portal_url = hostname
-                    return await self.async_step_credentials()
+                    return await self.async_step_auth_method()
                 self._errors["base"] = "commune_not_supported"
             elif (
                 selected_commune
@@ -100,6 +110,106 @@ class VeoliaFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             data_schema=vol.Schema({vol.Required("commune"): vol.In(commune_options)}),
             errors=self._errors,
         )
+
+    async def async_step_auth_method(self, user_input=None) -> dict:
+        """Let the user pick how to authenticate against the portal."""
+        return self.async_show_menu(
+            step_id="auth_method",
+            menu_options=["credentials", "refresh_token"],
+        )
+
+    async def async_step_refresh_token(self, user_input=None) -> dict:
+        """Authenticate with a Cognito refresh token.
+
+        Portals behind adaptive authentication answer a password sign-in with
+        an SMS challenge; on migrated accounts the pool holds an unverified
+        placeholder number, so that code never arrives. A refresh token
+        obtained from a trusted context sidesteps the challenge entirely.
+        """
+        self._errors = {}
+
+        if user_input is not None:
+            api = VeoliaRefreshTokenAPI(
+                user_input[CONF_REFRESH_TOKEN],
+                async_get_clientsession(self.hass),
+                portal_url=self._portal_url,
+            )
+            if await self._async_validate_refresh_token(api):
+                return self.async_create_entry(
+                    title=self._entry_title(api),
+                    data={
+                        CONF_REFRESH_TOKEN: user_input[CONF_REFRESH_TOKEN],
+                        CONF_PORTAL_URL: self._portal_url,
+                    },
+                )
+
+        return self.async_show_form(
+            step_id="refresh_token",
+            data_schema=vol.Schema({vol.Required(CONF_REFRESH_TOKEN): str}),
+            errors=self._errors,
+        )
+
+    async def async_step_reauth(self, entry_data) -> dict:
+        """Start reauthentication, typically once the token has expired."""
+        self._portal_url = entry_data.get(CONF_PORTAL_URL)
+        return await self.async_step_reauth_confirm()
+
+    async def async_step_reauth_confirm(self, user_input=None) -> dict:
+        """Take a fresh refresh token and repair the existing entry.
+
+        Entries created with a username and password are accepted here too:
+        the coordinator prefers a refresh token when the entry carries one,
+        which is the way out for an account that has since been moved behind
+        adaptive authentication.
+        """
+        self._errors = {}
+
+        if user_input is not None:
+            api = VeoliaRefreshTokenAPI(
+                user_input[CONF_REFRESH_TOKEN],
+                async_get_clientsession(self.hass),
+                portal_url=self._portal_url,
+            )
+            if await self._async_validate_refresh_token(api):
+                return self.async_update_reload_and_abort(
+                    self._get_reauth_entry(),
+                    data_updates={
+                        CONF_REFRESH_TOKEN: user_input[CONF_REFRESH_TOKEN],
+                    },
+                )
+
+        return self.async_show_form(
+            step_id="reauth_confirm",
+            data_schema=vol.Schema({vol.Required(CONF_REFRESH_TOKEN): str}),
+            errors=self._errors,
+        )
+
+    async def _async_validate_refresh_token(
+        self,
+        api: VeoliaRefreshTokenAPI,
+    ) -> bool:
+        """Try the token, recording why it failed in self._errors."""
+        try:
+            if await api.login():
+                return True
+            self._errors["base"] = "unknown"
+        except VeoliaAPITokenError:
+            LOGGER.exception("Veolia rejected the refresh token")
+            self._errors["base"] = "invalid_refresh_token"
+        except Exception:  # noqa: BLE001
+            LOGGER.exception(
+                "Unexpected error while using the Veolia refresh token "
+                "(portal=%s)",
+                self._portal_url or "eau.veolia.fr",
+            )
+            self._errors["base"] = "unknown"
+        return False
+
+    @staticmethod
+    def _entry_title(api: VeoliaRefreshTokenAPI) -> str:
+        """Name the entry after the meter, no username being available."""
+        meter = api.account_data.numero_compteur
+        return f"Veolia {meter}" if meter else "Veolia"
 
     async def async_step_credentials(self, user_input=None) -> dict:
         """Handle the input of credentials."""

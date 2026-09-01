@@ -9,6 +9,7 @@ LOGGER: Logger = getLogger(__package__)
 DOMAIN = "veolia"
 NAME = "Veolia"
 CONF_PORTAL_URL = "portal_url"
+CONF_REFRESH_TOKEN = "refresh_token"
 COMMUNE_LOOKUP_URL = (
     "https://prd-ael-sirius-refcommunes.istefr.fr/communes-nationales?q="
 )
