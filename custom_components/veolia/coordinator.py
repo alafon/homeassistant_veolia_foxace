@@ -4,7 +4,6 @@ from datetime import date, timedelta
 from typing import Any
 
 from dateutil.relativedelta import relativedelta
-from veolia_api import VeoliaAPI
 from veolia_api.exceptions import VeoliaAPIError
 
 from homeassistant.config_entries import ConfigEntry
@@ -15,7 +14,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import dt as dt_util
 
-from .api import VeoliaRefreshTokenAPI
+from .api import VeoliaCredentialsAPI, VeoliaRefreshTokenAPI
 from .const import CONF_PORTAL_URL, CONF_REFRESH_TOKEN, DOMAIN, LOGGER
 from .model import VeoliaModel
 
@@ -54,7 +53,7 @@ class VeoliaDataUpdateCoordinator(DataUpdateCoordinator):
                 portal_url=portal_url,
             )
         else:
-            self.client_api = VeoliaAPI(
+            self.client_api = VeoliaCredentialsAPI(
                 username=self.config_entry.data[CONF_USERNAME],
                 password=self.config_entry.data[CONF_PASSWORD],
                 session=self.session,
