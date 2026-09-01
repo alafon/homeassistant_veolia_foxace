@@ -122,7 +122,10 @@ class VeoliaFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
             except VeoliaAPIInvalidCredentialsError:
                 self._errors["base"] = "invalid_credentials"
             except Exception:  # noqa: BLE001
-                LOGGER.debug("Unknown exception")
+                LOGGER.exception(
+                    "Veolia login failed (portal=%s)",
+                    self._portal_url or "eau.veolia.fr",
+                )
                 self._errors["base"] = "unknown"
 
             return await self._show_credentials_form(user_input)
