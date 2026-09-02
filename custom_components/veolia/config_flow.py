@@ -3,7 +3,6 @@
 from urllib.parse import urlparse
 
 import aiohttp
-from veolia_api import VeoliaAPI
 from veolia_api.exceptions import (
     VeoliaAPIInvalidCredentialsError,
     VeoliaAPITokenError,
@@ -15,7 +14,11 @@ from homeassistant import config_entries
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from .api import VeoliaRefreshTokenAPI
+from .api import (
+    VeoliaChallengeError,
+    VeoliaCredentialsAPI,
+    VeoliaRefreshTokenAPI,
+)
 from .const import (
     COMMUNE_LOOKUP_URL,
     CONF_PORTAL_URL,
@@ -134,7 +137,7 @@ class VeoliaFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 async_get_clientsession(self.hass),
                 portal_url=self._portal_url,
             )
-            if await self._async_validate_refresh_token(api):
+            if await self._async_validate(api, "invalid_refresh_token"):
                 return self.async_create_entry(
                     title=self._entry_title(api),
                     data={
@@ -150,18 +153,52 @@ class VeoliaFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
     async def async_step_reauth(self, entry_data) -> dict:
-        """Start reauthentication, typically once the token has expired."""
+        """Start reauthentication, after a rejected token or a challenge."""
         self._portal_url = entry_data.get(CONF_PORTAL_URL)
-        return await self.async_step_reauth_confirm()
+        return await self.async_step_reauth_method()
 
-    async def async_step_reauth_confirm(self, user_input=None) -> dict:
-        """Take a fresh refresh token and repair the existing entry.
+    async def async_step_reconfigure(self, user_input=None) -> dict:
+        """Let the user switch authentication method whenever they want."""
+        self._portal_url = self._get_reconfigure_entry().data.get(CONF_PORTAL_URL)
+        return await self.async_step_reauth_method()
 
-        Entries created with a username and password are accepted here too:
-        the coordinator prefers a refresh token when the entry carries one,
-        which is the way out for an account that has since been moved behind
-        adaptive authentication.
-        """
+    async def async_step_reauth_method(self, user_input=None) -> dict:
+        """Offer both authentication methods on an existing entry."""
+        return self.async_show_menu(
+            step_id="reauth_method",
+            menu_options=["reauth_credentials", "reauth_token"],
+        )
+
+    async def async_step_reauth_credentials(self, user_input=None) -> dict:
+        """Switch the entry to a username and password."""
+        self._errors = {}
+
+        if user_input is not None:
+            api = VeoliaCredentialsAPI(
+                username=user_input[CONF_USERNAME],
+                password=user_input[CONF_PASSWORD],
+                session=async_get_clientsession(self.hass),
+                portal_url=self._portal_url,
+            )
+            if await self._async_validate(api, "invalid_credentials"):
+                return self._async_replace_entry_data(
+                    {
+                        CONF_USERNAME: user_input[CONF_USERNAME],
+                        CONF_PASSWORD: user_input[CONF_PASSWORD],
+                        CONF_PORTAL_URL: self._portal_url,
+                    },
+                )
+
+        return self.async_show_form(
+            step_id="reauth_credentials",
+            data_schema=vol.Schema(
+                {vol.Required(CONF_USERNAME): str, vol.Required(CONF_PASSWORD): str},
+            ),
+            errors=self._errors,
+        )
+
+    async def async_step_reauth_token(self, user_input=None) -> dict:
+        """Switch the entry to a refresh token."""
         self._errors = {}
 
         if user_input is not None:
@@ -170,80 +207,84 @@ class VeoliaFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
                 async_get_clientsession(self.hass),
                 portal_url=self._portal_url,
             )
-            if await self._async_validate_refresh_token(api):
-                return self.async_update_reload_and_abort(
-                    self._get_reauth_entry(),
-                    data_updates={
+            if await self._async_validate(api, "invalid_refresh_token"):
+                return self._async_replace_entry_data(
+                    {
                         CONF_REFRESH_TOKEN: user_input[CONF_REFRESH_TOKEN],
+                        CONF_PORTAL_URL: self._portal_url,
                     },
                 )
 
         return self.async_show_form(
-            step_id="reauth_confirm",
+            step_id="reauth_token",
             data_schema=vol.Schema({vol.Required(CONF_REFRESH_TOKEN): str}),
             errors=self._errors,
         )
 
-    async def _async_validate_refresh_token(
-        self,
-        api: VeoliaRefreshTokenAPI,
-    ) -> bool:
-        """Try the token, recording why it failed in self._errors."""
+    def _async_replace_entry_data(self, data: dict) -> dict:
+        """Replace the entry data wholesale, then reload.
+
+        Merging would leave the previous method's secrets behind -- a stale
+        password beside a fresh token, or the reverse -- and the coordinator
+        prefers a refresh token whenever the entry carries one. Switching
+        method therefore has to drop what it replaces.
+        """
+        entry = (
+            self._get_reconfigure_entry()
+            if self.source == config_entries.SOURCE_RECONFIGURE
+            else self._get_reauth_entry()
+        )
+        return self.async_update_reload_and_abort(entry, data=data)
+
+    async def _async_validate(self, api, token_error: str) -> bool:
+        """Try to log in, recording why it failed in self._errors."""
         try:
             if await api.login():
                 return True
             self._errors["base"] = "unknown"
+        except VeoliaChallengeError as err:
+            LOGGER.error(
+                "Veolia demanded the %s challenge (portal=%s)",
+                err.challenge_name,
+                self._portal_url or "eau.veolia.fr",
+            )
+            self._errors["base"] = "mfa_challenge"
+        except VeoliaAPIInvalidCredentialsError:
+            self._errors["base"] = "invalid_credentials"
         except VeoliaAPITokenError:
-            LOGGER.exception("Veolia rejected the refresh token")
-            self._errors["base"] = "invalid_refresh_token"
+            LOGGER.exception("Veolia rejected the credentials or the token")
+            self._errors["base"] = token_error
         except Exception:  # noqa: BLE001
             LOGGER.exception(
-                "Unexpected error while using the Veolia refresh token "
-                "(portal=%s)",
+                "Unexpected error while authenticating to Veolia (portal=%s)",
                 self._portal_url or "eau.veolia.fr",
             )
             self._errors["base"] = "unknown"
         return False
 
     @staticmethod
-    def _entry_title(api: VeoliaRefreshTokenAPI) -> str:
+    def _entry_title(api) -> str:
         """Name the entry after the meter, no username being available."""
         meter = api.account_data.numero_compteur
         return f"Veolia {meter}" if meter else "Veolia"
 
     async def async_step_credentials(self, user_input=None) -> dict:
-        """Handle the input of credentials."""
-        LOGGER.debug("Request credentials")
+        """Handle the initial input of credentials."""
+        self._errors = {}
+
         if user_input is not None:
-            try:
-                api = VeoliaAPI(
-                    user_input[CONF_USERNAME],
-                    user_input[CONF_PASSWORD],
-                    async_get_clientsession(self.hass),
-                    portal_url=self._portal_url,
+            api = VeoliaCredentialsAPI(
+                username=user_input[CONF_USERNAME],
+                password=user_input[CONF_PASSWORD],
+                session=async_get_clientsession(self.hass),
+                portal_url=self._portal_url,
+            )
+            if await self._async_validate(api, "invalid_credentials"):
+                return self.async_create_entry(
+                    title=user_input[CONF_USERNAME],
+                    data={**user_input, CONF_PORTAL_URL: self._portal_url},
                 )
-                valid = await api.login()
 
-                if valid:
-                    return self.async_create_entry(
-                        title=user_input[CONF_USERNAME],
-                        data={**user_input, CONF_PORTAL_URL: self._portal_url},
-                    )
-            except VeoliaAPIInvalidCredentialsError:
-                self._errors["base"] = "invalid_credentials"
-            except Exception:  # noqa: BLE001
-                LOGGER.exception(
-                    "Veolia login failed (portal=%s)",
-                    self._portal_url or "eau.veolia.fr",
-                )
-                self._errors["base"] = "unknown"
-
-            return await self._show_credentials_form(user_input)
-
-        return await self._show_credentials_form(user_input)
-
-    async def _show_credentials_form(self, user_input) -> dict:
-        """Show the configuration form to input credentials."""
         return self.async_show_form(
             step_id="credentials",
             data_schema=vol.Schema(

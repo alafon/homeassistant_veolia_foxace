@@ -20,9 +20,33 @@ from typing import Any
 import aiohttp
 from veolia_api import VeoliaAPI
 from veolia_api.constants import BACKEND_ISTEFR, GET, LOGIN_URL, POST, ConsumptionType
-from veolia_api.exceptions import VeoliaAPIGetDataError, VeoliaAPITokenError
+from veolia_api.exceptions import (
+    VeoliaAPIError,
+    VeoliaAPIGetDataError,
+    VeoliaAPIInvalidCredentialsError,
+    VeoliaAPITokenError,
+)
 
 from .const import LOGGER
+
+
+class VeoliaChallengeError(VeoliaAPIError):
+    """Cognito answered a sign-in with a challenge instead of tokens.
+
+    Its adaptive authentication demands a second factor whenever it does not
+    recognise the caller's context. On accounts migrated to a delegated portal
+    the pool's phone number is often an unverified placeholder, so the SMS code
+    never arrives and the challenge cannot be answered at all -- which is why
+    this is reported as its own error rather than a generic failure.
+    """
+
+    def __init__(self, challenge_name: str) -> None:
+        """Record which challenge was demanded."""
+        self.challenge_name = challenge_name
+        super().__init__(
+            f"Cognito demanded the {challenge_name} challenge, "
+            "which this integration cannot answer",
+        )
 
 
 class SubscriptionWindowMixin:
@@ -94,7 +118,55 @@ class SubscriptionWindowMixin:
 
 
 class VeoliaCredentialsAPI(SubscriptionWindowMixin, VeoliaAPI):
-    """Upstream username/password client, with the subscription window fixed."""
+    """Username/password client that reports why a sign-in failed."""
+
+    async def _get_access_token(self) -> None:
+        """Sign in, telling a challenge apart from a plain failure.
+
+        Upstream reads AuthenticationResult and raises a bare "Authentication
+        failed" when it is absent, which is exactly what a challenge response
+        looks like. Rejected credentials are likewise reported as a generic
+        token error. Both cases deserve their own diagnosis.
+        """
+        self.account_data.access_token = None
+
+        response = await self._send_request(
+            url=LOGIN_URL,
+            method=POST,
+            json_data={
+                "ClientId": self._client_id,
+                "AuthFlow": "USER_PASSWORD_AUTH",
+                "AuthParameters": {
+                    "USERNAME": self.username,
+                    "PASSWORD": self.password,
+                },
+            },
+            is_login=True,
+        )
+        token_data = await response.json(content_type="json")
+
+        if response.status != HTTPStatus.OK:
+            error_type = token_data.get("__type", "")
+            message = token_data.get("message", "")
+            if error_type in ("NotAuthorizedException", "UserNotFoundException"):
+                raise VeoliaAPIInvalidCredentialsError(message or error_type)
+            raise VeoliaAPITokenError(f"{error_type} - {message}")
+
+        if challenge := token_data.get("ChallengeName"):
+            raise VeoliaChallengeError(challenge)
+
+        result = token_data.get("AuthenticationResult") or {}
+        access_token = result.get("AccessToken")
+        if not access_token:
+            raise VeoliaAPITokenError(
+                f"No access token and no challenge (keys: {sorted(token_data)})",
+            )
+
+        self.account_data.access_token = access_token
+        self.account_data.token_expiration = (
+            datetime.now() + timedelta(seconds=result.get("ExpiresIn", 0))
+        ).timestamp()
+        LOGGER.debug("Access token retrieved through USER_PASSWORD_AUTH")
 
 
 class VeoliaRefreshTokenAPI(SubscriptionWindowMixin, VeoliaAPI):
