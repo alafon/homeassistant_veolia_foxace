@@ -20,8 +20,10 @@ from homeassistant.helpers import (
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 import homeassistant.helpers.config_validation as cv
 
+from .api import VeoliaCredentialsAPI, VeoliaRefreshTokenAPI
 from .const import (
     CONF_PORTAL_URL,
+    CONF_REFRESH_TOKEN,
     DOMAIN,
     INITIAL_REFRESH_BACKOFF,
     INITIAL_REFRESH_RETRIES,
@@ -146,12 +148,22 @@ async def async_migrate_entry(hass: HomeAssistant, entry: VeoliaConfigEntry) -> 
 
     if entry.version == 1:
         LOGGER.info("Migrating config entry %s from version 1 to 2", entry.entry_id)
-        api = VeoliaAPI(
-            username=entry.data[CONF_USERNAME],
-            password=entry.data[CONF_PASSWORD],
-            session=async_get_clientsession(hass),
-            portal_url=entry.data.get(CONF_PORTAL_URL),
-        )
+        # A v1 entry may already carry a refresh token rather than credentials.
+        portal_url = entry.data.get(CONF_PORTAL_URL)
+        api: VeoliaAPI
+        if refresh_token := entry.data.get(CONF_REFRESH_TOKEN):
+            api = VeoliaRefreshTokenAPI(
+                refresh_token=refresh_token,
+                session=async_get_clientsession(hass),
+                portal_url=portal_url,
+            )
+        else:
+            api = VeoliaCredentialsAPI(
+                username=entry.data[CONF_USERNAME],
+                password=entry.data[CONF_PASSWORD],
+                session=async_get_clientsession(hass),
+                portal_url=portal_url,
+            )
         try:
             login_ok = await api.login()
         except (VeoliaAPIError, aiohttp.ClientError, TimeoutError) as err:

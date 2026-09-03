@@ -51,7 +51,10 @@ def mock_config_entry() -> MockConfigEntry:
 
 @pytest.fixture
 def mock_veolia_api() -> Generator[MagicMock]:
-    """Mock the VeoliaAPI client at its three usage points.
+    """Mock the Veolia clients at their usage points.
+
+    Both authentication variants are patched everywhere they are built, so a
+    test can drive either method through the same mock.
 
     The class is patched in coordinator.py (runtime), config_flow.py (config
     and options flows) and __init__.py (v1 -> v2 migration), each returning
@@ -70,14 +73,32 @@ def mock_veolia_api() -> Generator[MagicMock]:
 
     with (
         patch(
-            "custom_components.veolia.coordinator.VeoliaAPI", return_value=api
+            "custom_components.veolia.coordinator.VeoliaCredentialsAPI",
+            return_value=api,
         ) as coordinator_cls,
         patch(
-            "custom_components.veolia.config_flow.VeoliaAPI", return_value=api
+            "custom_components.veolia.coordinator.VeoliaRefreshTokenAPI",
+            return_value=api,
+        ) as coordinator_token_cls,
+        patch(
+            "custom_components.veolia.config_flow.VeoliaCredentialsAPI",
+            return_value=api,
         ) as config_flow_cls,
-        patch("custom_components.veolia.VeoliaAPI", return_value=api) as init_cls,
+        patch(
+            "custom_components.veolia.config_flow.VeoliaRefreshTokenAPI",
+            return_value=api,
+        ) as config_flow_token_cls,
+        patch(
+            "custom_components.veolia.VeoliaCredentialsAPI", return_value=api
+        ) as init_cls,
+        patch(
+            "custom_components.veolia.VeoliaRefreshTokenAPI", return_value=api
+        ) as init_token_cls,
     ):
         api.coordinator_cls = coordinator_cls
+        api.coordinator_token_cls = coordinator_token_cls
         api.config_flow_cls = config_flow_cls
+        api.config_flow_token_cls = config_flow_token_cls
         api.init_cls = init_cls
+        api.init_token_cls = init_token_cls
         yield api

@@ -41,3 +41,4 @@ home-assistant.log*
 .envrc
 /get_annual_example.txt
 /get_monthly_exemple.txt
+.venv/
