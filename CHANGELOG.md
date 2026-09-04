@@ -9,6 +9,64 @@ Ce fichier est maintenu automatiquement par
 [release-please](https://github.com/googleapis/release-please) à partir des
 conventional commits.
 
+## [5.0.0](https://github.com/alafon/homeassistant_veolia_foxace/compare/v4.2.0...v5.0.0) (2026-09-04)
+
+
+### ⚠ BREAKING CHANGES
+
+* remove personal identifiers from billing_index sensor attributes ([#22](https://github.com/alafon/homeassistant_veolia_foxace/issues/22))
+* anchored external statistics, config flow hardening and repair issues ([#13](https://github.com/alafon/homeassistant_veolia_foxace/issues/13))
+
+### Added
+
+* add balance, monthly payment and next direct debit sensors ([cf14113](https://github.com/alafon/homeassistant_veolia_foxace/commit/cf14113e373151d834a9fdd390cb0124f572ac56))
+* add billing index sensor with contract details, FR date for next payment ([a09dbb7](https://github.com/alafon/homeassistant_veolia_foxace/commit/a09dbb71d26f3f231a66481fd820641357e18fe0))
+* add cost external statistic with configurable price per m³ ([#21](https://github.com/alafon/homeassistant_veolia_foxace/issues/21)) ([5f2ba73](https://github.com/alafon/homeassistant_veolia_foxace/commit/5f2ba735f655889a7e70ebf16cd47a89d407cf61))
+* anchored external statistics, config flow hardening and repair issues ([#13](https://github.com/alafon/homeassistant_veolia_foxace/issues/13)) ([cc880a0](https://github.com/alafon/homeassistant_veolia_foxace/commit/cc880a0bae754dc22280d13eb2feb950887124d8))
+* choix de la méthode d'authentification, avec le jeton de rafraîchissement ([#53](https://github.com/alafon/homeassistant_veolia_foxace/issues/53)) ([b07b234](https://github.com/alafon/homeassistant_veolia_foxace/commit/b07b234c9b5911d8f6f2edbe075a968de01c3dc9))
+* complete integration overhaul (coordinator, entities, unique_id migration, tests 98%) ([62c0742](https://github.com/alafon/homeassistant_veolia_foxace/commit/62c0742a5a34f9c4775c47b5b06da037c7a99d6c))
+* config entry diagnostics with sensitive-data redaction ([62c0742](https://github.com/alafon/homeassistant_veolia_foxace/commit/62c0742a5a34f9c4775c47b5b06da037c7a99d6c))
+* configurable update interval via an options flow (1-24h) ([62c0742](https://github.com/alafon/homeassistant_veolia_foxace/commit/62c0742a5a34f9c4775c47b5b06da037c7a99d6c))
+* daily consumption shows last available day instead of empty today ([f2214d8](https://github.com/alafon/homeassistant_veolia_foxace/commit/f2214d8e2991d82dd9ee59bfb285c0947128a919))
+* integration overhaul — system health, platinum quality scale, upstreamed API tests ([#14](https://github.com/alafon/homeassistant_veolia_foxace/issues/14)) ([3d79287](https://github.com/alafon/homeassistant_veolia_foxace/commit/3d79287b548d0ed419c8eddcb79dbf8a8415fb71))
+* reconfigure flow to update credentials from the UI ([62c0742](https://github.com/alafon/homeassistant_veolia_foxace/commit/62c0742a5a34f9c4775c47b5b06da037c7a99d6c))
+* support portail Eau de Perpignan Méditerranée Métropole (www.ea-pm.fr) ([202bccc](https://github.com/alafon/homeassistant_veolia_foxace/commit/202bcccb68d89853bb84618dfaaad69915e33930))
+* unique_ids migrated to the Veolia subscription id (automatic v1→v2 migration, entity_ids preserved) ([62c0742](https://github.com/alafon/homeassistant_veolia_foxace/commit/62c0742a5a34f9c4775c47b5b06da037c7a99d6c))
+* utiliser async_get_device_by_identifier (dépréciation registre) ([#46](https://github.com/alafon/homeassistant_veolia_foxace/issues/46)) ([4eb38a6](https://github.com/alafon/homeassistant_veolia_foxace/commit/4eb38a65eb78d15d074fb791845f5a20124652bb))
+
+
+### Fixed
+
+* binary_sensor/switch/text entities were polled instead of coordinator-driven and ignored API failures in their availability ([62c0742](https://github.com/alafon/homeassistant_veolia_foxace/commit/62c0742a5a34f9c4775c47b5b06da037c7a99d6c))
+* bump veolia-api-foxace to 2.4.3 ([#25](https://github.com/alafon/homeassistant_veolia_foxace/issues/25)) ([66241bb](https://github.com/alafon/homeassistant_veolia_foxace/commit/66241bb75a1422ba7896a3ad77058b10b61a7a30))
+* bump veolia-api-foxace to 2.4.4 ([#27](https://github.com/alafon/homeassistant_veolia_foxace/issues/27)) ([1fdbd76](https://github.com/alafon/homeassistant_veolia_foxace/commit/1fdbd765115e6b75446d5b2babb9c3e0df86381d))
+* coordinator error handling, reauth flow, runtime_data, unique config entry ([b0125c3](https://github.com/alafon/homeassistant_veolia_foxace/commit/b0125c3b897ac3287a64ae8bd8fab25443b6a699))
+* daily/monthly alert threshold was sent as a string instead of an int ([62c0742](https://github.com/alafon/homeassistant_veolia_foxace/commit/62c0742a5a34f9c4775c47b5b06da037c7a99d6c))
+* dedicated maintenance error in the commune flow and info.md resync ([#24](https://github.com/alafon/homeassistant_veolia_foxace/issues/24)) ([e942421](https://github.com/alafon/homeassistant_veolia_foxace/commit/e942421e38142eac03227ea1b74c949f0d3fb284))
+* **deps:** bump veolia-api-foxace to 2.4.1 ([#15](https://github.com/alafon/homeassistant_veolia_foxace/issues/15)) ([0094dd8](https://github.com/alafon/homeassistant_veolia_foxace/commit/0094dd85f8abd54c40215efafc7ff82e9e315c20))
+* guard the statistics rewind against a vanished anchor row ([#19](https://github.com/alafon/homeassistant_veolia_foxace/issues/19)) ([dd7b7e2](https://github.com/alafon/homeassistant_veolia_foxace/commit/dd7b7e2df4267d3918d1b3cdc9443f17c350a840))
+* meter-index recorder statistics were never imported (# NOT WORKING hook re-enabled) ([62c0742](https://github.com/alafon/homeassistant_veolia_foxace/commit/62c0742a5a34f9c4775c47b5b06da037c7a99d6c))
+* remove personal identifiers from billing_index sensor attributes ([#22](https://github.com/alafon/homeassistant_veolia_foxace/issues/22)) ([ddbb1fd](https://github.com/alafon/homeassistant_veolia_foxace/commit/ddbb1fd0a922eee71af897a6189100f07c3e0fb1))
+* **security:** redact password from request-body debug logs ([7443b09](https://github.com/alafon/homeassistant_veolia_foxace/commit/7443b0903a87157b299e1594b5a4a7af8e57474c))
+* serialize concurrent alert-settings writes with a lock ([#23](https://github.com/alafon/homeassistant_veolia_foxace/issues/23)) ([f67a5f7](https://github.com/alafon/homeassistant_veolia_foxace/commit/f67a5f72bcf393b2c165c40553656bb64a228eff))
+* translate coordinator errors and use French statistic names ([#17](https://github.com/alafon/homeassistant_veolia_foxace/issues/17)) ([3c7505a](https://github.com/alafon/homeassistant_veolia_foxace/commit/3c7505a406a879bf65e06b5f390784f82ab03da5))
+* vendored client robustness (raw-int timeout ValueError, 401 handling, token expiry margin, typed AlertSettings defaults) ([62c0742](https://github.com/alafon/homeassistant_veolia_foxace/commit/62c0742a5a34f9c4775c47b5b06da037c7a99d6c))
+
+
+### Changed
+
+* EntityDescription pattern on all platforms, modular pure-function model, strict typing (mypy --strict) incl. the vendored client ([62c0742](https://github.com/alafon/homeassistant_veolia_foxace/commit/62c0742a5a34f9c4775c47b5b06da037c7a99d6c))
+* replace vendored client with the veolia-api-foxace PyPI package ([#12](https://github.com/alafon/homeassistant_veolia_foxace/issues/12)) ([7a5a32b](https://github.com/alafon/homeassistant_veolia_foxace/commit/7a5a32bca16c8d300822d314ad01ebd416f64360))
+* run initial refresh in background to speed up boot ([#40](https://github.com/alafon/homeassistant_veolia_foxace/issues/40)) ([7e95335](https://github.com/alafon/homeassistant_veolia_foxace/commit/7e95335da00fb80075f43e2c3db10bf835495576))
+* vendor corrected veolia_api client instead of git dependency ([8c7da12](https://github.com/alafon/homeassistant_veolia_foxace/commit/8c7da12cacee3d367b3fbbc23999be6967e74ee2))
+
+
+### Documentation
+
+* dedupe CHANGELOG 2.2.0 section ([c9a3d90](https://github.com/alafon/homeassistant_veolia_foxace/commit/c9a3d90fa663c95357a6607222d409084ab68b7c))
+* dire qu'il n'y a qu'une heure de service en mode jeton ([#55](https://github.com/alafon/homeassistant_veolia_foxace/issues/55)) ([4d1ca1f](https://github.com/alafon/homeassistant_veolia_foxace/commit/4d1ca1faa4404d7bc45095ba6a99100cfdb3e19b))
+* remove duplicated unreleased changelog section (release-please owns it) ([fa711e5](https://github.com/alafon/homeassistant_veolia_foxace/commit/fa711e531dcc78c24b1fb9a1e9c9c0903f221a57))
+
 ## [4.2.0](https://github.com/foXaCe/homeassistant_veolia/compare/v4.1.0...v4.2.0) (2026-09-03)
 
 
